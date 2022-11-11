@@ -7,6 +7,8 @@ import os
 import re
 import shutil
 import string
+from gensim.parsing.preprocessing import remove_stopwords
+from py_file.estimate_batch_size import *
 
 from py_file.estimate_batch_size import *
 
@@ -16,15 +18,30 @@ train = pd.read_csv("dataset/goodreads_train.csv")
 x_train = train['review_text']
 # x_test = test['review_text']
 
+x_train_rm_st = x_train
+
 y_train = train['rating']
 # y_test = test['rating']
-
-# layer = tf.keras.layers.StringLookup()
-# layer.adapt(data)
-# layer.get_vocabulary()
+print("cleaning data")
 
 
-vectorize_layer = tf.keras.layers.TextVectorization(
+x_train_rm_st = x_train_rm_st.apply(lambda x: remove_stopwords(x))
+
+#for x in range(len(x_train)):
+
+    #x_train_rm_st.iloc[x] = remove_stopwords(x_train.iloc[x])
+
+
+print(len(x_train_rm_st.iloc[0]))
+
+print("tokenizing data")
+layer = tf.keras.layers.StringLookup()
+layer.adapt(x_train_rm_st)
+print(type(layer.get_vocabulary()))
+
+
+
+"""vectorize_layer = tf.keras.layers.TextVectorization(
     max_tokens= 100000,
     standardize='lower_and_strip_punctuation',
     split='whitespace',
@@ -43,19 +60,25 @@ model = tf.keras.models.Sequential()
 
 model.add(tf.keras.Input(shape=(1,), dtype=tf.string))
 model.add(vectorize_layer)
+# model.add(tf.keras.layers.Dense(255, activation=tf.keras.activations.softmax))
+# model.add(tf.keras.layers.Dense(64, activation=tf.keras.activations.softmax))
+# model.add(tf.keras.layers.Dense(64, activation=tf.keras.activations.softmax))
+# model.add(tf.keras.layers.Dense(32, activation=tf.keras.activations.softmax))
 model.add(tf.keras.layers.Dense(1, activation=tf.keras.activations.linear))
 model.compile(optimizer=tf.keras.optimizers.RMSprop(learning_rate=0.001),
-              loss=tf.keras.losses.mse
+              loss=tf.keras.losses.KLD
               )
 
 optimal_batch_size = FindBatchSize(model)
 
+
 print("training")
-model.fit(x_train, y_train, epochs=50,
+model.summary()
+model.fit(x_train, y_train, epochs=5,
                   callbacks=[
                       tf.keras.callbacks.TensorBoard(log_dir="/logs"),
                   ],
-                  batch_size=optimal_batch_size
+                  batch_size=150000
                   )
 
-model.save("models_trained/linear_model_1")
+model.save("models_trained/linear_model_1")"""
