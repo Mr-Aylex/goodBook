@@ -48,5 +48,6 @@ if __name__ ==  '__main__':
 
     df = parallelize_dataframe(x_train, prepro_map, 15)
     print(df)
+    df.to_json("dataset/prepro_train.json")
 
     np.save("prepro_train_archive",df.to_numpy())
