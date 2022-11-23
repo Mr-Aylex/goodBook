@@ -1,102 +1,68 @@
-import pandas as pd
+import numpy as np
 import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras import layers
+import pandas as pd
 import numpy as np
 from multiprocessing import  Pool
-import matplotlib.pyplot as plt
-from tensorflow import keras
-import os
-import re
-import shutil
-import string
+from tqdm import tqdm
 import nltk
 from nltk.corpus import stopwords
 from nltk.stem.porter import PorterStemmer
-from tqdm import tqdm
+from nltk.stem import WordNetLemmatizer
+from nltk.corpus import treebank
 
-from py_file.estimate_batch_size import *
-
-# %%
-train = pd.read_csv("dataset/goodreads_train.csv")
-# test = pd.read_csv("dataset/goodreads_test.csv")
-
-x_train = train['review_text']
-
-
-# x_test = test['review_text']
+#%%
+dic = {}
+all_stop_word = stopwords.words("english")
+for stop_word in all_stop_word:
+    dic[stop_word] = stop_word
 def parallelize_dataframe(df, func, n_cores=4):
-    df_split = np.array_split(df, n_cores)
-    pool = Pool(n_cores)
-    df = pd.concat(pool.map(func, df_split))
-    pool.close()
-    pool.join()
-    return df
+    print("split")
 
-def prepro(data):
-    words = data.lower()
-    print("word lower")
+    df_split = np.array_split(df, n_cores)
+    del df
+    print(df_split)
+
+    with Pool(n_cores) as pool:
+        df = pd.concat(pool.map(func, df_split))
+
+    return df
+def prepro(text):
+    words = text.lower()
     tokens = nltk.word_tokenize(words)
-    print("end tokenize")
-    words_stop_less = [w for w in tokens if w not in stopwords.words("english")]
-    print("end removing stop word")
+    words_stop_less = [w for w in tokens if dic.get(w) == None]
+    
     stemmed = [PorterStemmer().stem(w) for w in words_stop_less]
-    print("end PorterStemmer")
     return " ".join(stemmed)
+
+
+def prepro2(text):
+    words = text
+    tokens = nltk.word_tokenize(words)
+    words_stop_less = [w for w in tokens if dic.get(w) == None]
+
+    lemmed = [WordNetLemmatizer().lemmatize(w) for w in words_stop_less]
+    tagged = nltk.pos_tag(lemmed)
+    sentence = [w[0] for w in tagged if w[1] != 'NNP']
+
+
+
+    return " ".join(sentence).lower()
 
 def prepro_map(data_frame):
     tqdm.pandas()
-    return data_frame.progress_apply(lambda x: prepro(x))
+    return data_frame.progress_apply(lambda x: prepro2(x))
+#%%
+print("start preprosessing")
+if __name__ ==  '__main__':
+    print("open dataset")
+    train = pd.read_csv("dataset/goodreads_train.csv")
+
+    # test = pd.read_csv("dataset/goodreads_test.csv")
+    x_train = train['review_text']
+    df = parallelize_dataframe(x_train, prepro_map, 15)
 
 
 
-"""print(x_train[0])
-
-print(len(x_train[0]))
-print(prepro(x_train[0]))
-print(len(prepro(x_train[0])))"""
-x_train_prepro = prepro(x_train[0]).split()
-
-for x, y in x_train[0].split(), x_train_prepro:
-    print(x,y)
-#parallelize_dataframe(x_train, prepro)
-"""x_train = x_train.apply(lambda x: prepro(x))
-
-print(x_train[0])
-y_train = train['rating']"""
-# y_test = test['rating']
-# %%
-"""vectorize_layer = tf.keras.layers.TextVectorization(
-    max_tokens=376576,
-    standardize='lower_and_strip_punctuation',
-    split='whitespace',
-    output_mode='int',
-    output_sequence_length=1400,
-    vocabulary=np.load('voc.npy'))
-# %%
-# print("adapt")
-# vectorize_layer.adapt(x_train)
-# print("model_adding")
-# print(len(vectorize_layer.get_vocabulary()))
-# %%
-model = tf.keras.models.Sequential()
-# %%
-model.add(tf.keras.Input(shape=(1,), dtype=tf.string))
-model.add(vectorize_layer)
-model.add(tf.keras.layers.Dense(1, activation=tf.keras.activations.linear))
-# %%
-model.compile(optimizer=tf.keras.optimizers.RMSprop(learning_rate=0.001),
-              loss=tf.keras.losses.mse
-              )
-# %%
-optimal_batch_size = FindBatchSize(model)
-print(optimal_batch_size)
-# %%
-print("training")
-# %%
-model.fit(x_train, y_train, epochs=50,
-          callbacks=[
-              tf.keras.callbacks.TensorBoard(log_dir="/logs"),
-          ],
-          batch_size=100000
-          )
-# %%
-model.save("models_trained/linear_model_1")"""
+    np.save("prepro_train_archive_PN_less",df.to_numpy())
