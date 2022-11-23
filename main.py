@@ -9,6 +9,9 @@ from tqdm import tqdm
 import nltk
 from nltk.corpus import stopwords
 from nltk.stem.porter import PorterStemmer
+from nltk.stem import WordNetLemmatizer
+from nltk.corpus import treebank
+
 #%%
 dic = {}
 all_stop_word = stopwords.words("english")
@@ -29,12 +32,27 @@ def prepro(text):
     words = text.lower()
     tokens = nltk.word_tokenize(words)
     words_stop_less = [w for w in tokens if dic.get(w) == None]
+    
     stemmed = [PorterStemmer().stem(w) for w in words_stop_less]
     return " ".join(stemmed)
 
+
+def prepro2(text):
+    words = text
+    tokens = nltk.word_tokenize(words)
+    words_stop_less = [w for w in tokens if dic.get(w) == None]
+
+    lemmed = [WordNetLemmatizer().lemmatize(w) for w in words_stop_less]
+    tagged = nltk.pos_tag(lemmed)
+    sentence = [w[0] for w in tagged if w[1] != 'NNP']
+
+
+
+    return " ".join(sentence).lower()
+
 def prepro_map(data_frame):
     tqdm.pandas()
-    return data_frame.progress_apply(lambda x: prepro(x))
+    return data_frame.progress_apply(lambda x: prepro2(x))
 #%%
 print("start preprosessing")
 if __name__ ==  '__main__':
@@ -43,10 +61,8 @@ if __name__ ==  '__main__':
 
     # test = pd.read_csv("dataset/goodreads_test.csv")
     x_train = train['review_text']
-    # %%
-
-
     df = parallelize_dataframe(x_train, prepro_map, 15)
-    print(df)
 
-    np.save("prepro_train_archive",df.to_numpy())
+
+
+    np.save("prepro_train_archive_PN_less",df.to_numpy())
