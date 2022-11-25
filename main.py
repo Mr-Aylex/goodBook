@@ -22,7 +22,6 @@ def parallelize_dataframe(df, func, n_cores=4):
 
     df_split = np.array_split(df, n_cores)
     del df
-    print(df_split)
 
     with Pool(n_cores) as pool:
         df = pd.concat(pool.map(func, df_split))
@@ -46,8 +45,6 @@ def prepro2(text):
     tagged = nltk.pos_tag(lemmed)
     sentence = [w[0] for w in tagged if w[1] != 'NNP']
 
-
-
     return " ".join(sentence).lower()
 
 def prepro_map(data_frame):
@@ -58,11 +55,12 @@ print("start preprosessing")
 if __name__ ==  '__main__':
     print("open dataset")
     train = pd.read_csv("dataset/goodreads_train.csv")
-
+    test = pd.read_csv("dataset/goodreads_test.csv")
     # test = pd.read_csv("dataset/goodreads_test.csv")
     x_train = train['review_text']
-    df = parallelize_dataframe(x_train, prepro_map, 15)
+    x_test = test['review_text']
+    df = parallelize_dataframe(x_test, prepro_map, 15)
 
 
 
-    np.save("prepro_train_archive_PN_less",df.to_numpy())
+    np.save("vocabulaires/prepro_test_archive_PN_less",df.to_numpy())
