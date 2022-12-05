@@ -1,7 +1,7 @@
 /dataset/
 /.idea
 /notebook/voc.npy
-/prepro_train_archive.npy
+/vocabulaires/prepro_train_archive.npy
 /vocabulaires/voc2.npy
 /vocabulaires/voc2.npy
 /vocabulaires/
