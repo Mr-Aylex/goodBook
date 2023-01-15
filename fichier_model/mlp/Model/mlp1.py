@@ -41,7 +41,6 @@ class Model:
 
 
 
-
         return keras.layers.Dense(6, activation=keras.activations.sigmoid)(layer)
 
     def run_experiment(self, data, output, epochs=10, batch_size=100, validation_split=0.2, callbacks=None):
