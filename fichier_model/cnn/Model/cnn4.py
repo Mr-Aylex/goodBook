@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from sklearn.utils.class_weight import compute_class_weight
-
+import tensorflow_addons as tfa
 
 class Model:
 
@@ -19,7 +19,7 @@ class Model:
 
         self.model.compile(optimizer=keras.optimizers.Adamax(),
                            loss=keras.losses.categorical_crossentropy,
-                           metrics=[keras.metrics.categorical_accuracy]
+                           metrics=[keras.metrics.categorical_accuracy, tfa.metrics.F1Score(num_classes=6, average='weighted')]
                            )
 
     def create_layers(self, inputs1, inputs2, inputs3):
@@ -35,7 +35,7 @@ class Model:
             vocabulary=self.vocabulary
         )(inputs1)
 
-        x = keras.layers.Embedding(len(self.vocabulary), 32, batch_size=100, embeddings_regularizer=keras.regularizers.l2(0.0008))(
+        x = keras.layers.Embedding(len(self.vocabulary) + 1, 32, batch_size=100, embeddings_regularizer=keras.regularizers.l2(0.0008))(
             vectorize_layer)
 
         x = keras.layers.Conv1D(64, 9, kernel_regularizer=regularizer, bias_regularizer=regularizer, padding="same",

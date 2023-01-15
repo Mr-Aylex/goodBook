@@ -67,7 +67,7 @@ def prepro_lem(text):
 
 def prepro_lem_neg(text):
     words = text
-    tokens = nltk.word_tokenize(words)
+    tokens = nltk.word_tokenize(words) 
 
     lemmed = [WordNetLemmatizer().lemmatize(w) for w in tokens]
     tokens = mark_negation(lemmed)
