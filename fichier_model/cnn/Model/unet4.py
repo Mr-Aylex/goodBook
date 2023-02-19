@@ -33,20 +33,6 @@ def upsample_block(x, conv_features, n_filters):
     return x
 
 
-class TokenAndPositionEmbedding(keras.layers.Layer):
-    def __init__(self, maxlen, vocab_size, embed_dim):
-        super(TokenAndPositionEmbedding, self).__init__()
-        self.token_emb = keras.layers.Embedding(input_dim=vocab_size, output_dim=embed_dim)
-        self.pos_emb = keras.layers.Embedding(input_dim=maxlen, output_dim=embed_dim)
-
-    def call(self, x):
-        maxlen = tf.shape(x)[-1]
-        positions = tf.range(start=0, limit=maxlen, delta=1)
-        positions = self.pos_emb(positions)
-        x = self.token_emb(x)
-        return x + positions
-
-
 class Model:
 
     def __init__(self, vocabulary):
@@ -68,13 +54,13 @@ class Model:
 
     def create_layers(self, inputs1, inputs2, inputs3):
         regularizer = None
-        dropout_rate = 0.2
+        dropout_rate = 0.15
         # create vectorize layer, to transform words in integer
         vectorize_layer = keras.layers.TextVectorization(
             standardize='lower_and_strip_punctuation',
             split='whitespace',
             output_mode='int',
-            output_sequence_length=256,
+            output_sequence_length=512,
             vocabulary=self.vocabulary
         )(inputs1)
 
@@ -83,16 +69,16 @@ class Model:
         f1, p1 = downsample_block(x, 64)
         f2, p2 = downsample_block(p1, 128)
         f3, p3 = downsample_block(p2, 256)
+        f4, p4 = downsample_block(p3, 512)
 
-        bottleneck = double_conv_block(p3, 512)
+        bottleneck = double_conv_block(p4, 1024)
 
-        u1 = upsample_block(bottleneck, f3, 256)
+        u1 = upsample_block(bottleneck, f4, 512)
+        u2 = upsample_block(u1, f3, 256)
+        u3 = upsample_block(u2, f2, 128)
+        u4 = upsample_block(u3, f1, 64)
 
-        u2 = upsample_block(u1, f2, 128)
-
-        u3 = upsample_block(u2, f1, 64)
-
-        dense = keras.layers.Dense(64, activation=keras.activations.relu)(keras.layers.Flatten()(u3))
+        dense = keras.layers.Dense(64, activation=keras.activations.relu)(keras.layers.Flatten()(u4))
         dense = keras.layers.Dropout(dropout_rate)(dense)
 
         dense = keras.layers.Dense(32, activation=keras.activations.relu)(dense)

@@ -6,19 +6,6 @@ from sklearn.utils.class_weight import compute_class_weight
 import tensorflow_addons as tfa
 import keras_nlp
 
-class TokenAndPositionEmbedding(keras.layers.Layer):
-    def __init__(self, maxlen, vocab_size, embed_dim):
-        super(TokenAndPositionEmbedding, self).__init__()
-        self.token_emb = keras.layers.Embedding(input_dim=vocab_size, output_dim=embed_dim)
-        self.pos_emb = keras.layers.Embedding(input_dim=maxlen, output_dim=embed_dim)
-
-    def call(self, x):
-        maxlen = tf.shape(x)[-1]
-        positions = tf.range(start=0, limit=maxlen, delta=1)
-        positions = self.pos_emb(positions)
-        x = self.token_emb(x)
-        return x + positions
-
 
 class Model:
 
@@ -29,9 +16,14 @@ class Model:
         inputs2 = keras.Input(shape=1, dtype=tf.float32)  # n_comment
         inputs3 = keras.Input(shape=1, dtype=tf.float32)  # n_votes
 
-        layers = self.create_layers(inputs1, inputs2, inputs3)
+        inputs4 = keras.Input(shape=1, dtype=tf.float32)  # read_at
+        inputs5 = keras.Input(shape=1, dtype=tf.float32)  # date_added
+        inputs6 = keras.Input(shape=1, dtype=tf.float32)  # date_updated
+        inputs7 = keras.Input(shape=1, dtype=tf.float32)  # started_at
 
-        self.model = keras.Model(inputs=[inputs1, inputs2, inputs3], outputs=layers)
+        layers = self.create_layers(inputs1, inputs2, inputs3, inputs4, inputs5, inputs6, inputs7)
+
+        self.model = keras.Model(inputs=[inputs1, inputs2, inputs3, inputs4, inputs5, inputs6, inputs7], outputs=layers)
 
         self.model.compile(optimizer=keras.optimizers.Adamax(),
                            loss=keras.losses.categorical_crossentropy,
@@ -39,74 +31,51 @@ class Model:
                                     tfa.metrics.F1Score(num_classes=6, average='weighted')]
                            )
 
-    def create_layers(self, inputs1, inputs2, inputs3):
+    def create_layers(self, inputs1, inputs2, inputs3, inputs4, inputs5, inputs6, inputs7):
         regularizer = None
         dropout_rate = 0.2
-        INTERMEDIATE_DIM = 500
+        INTERMEDIATE_DIM = 300
         NUM_HEADS = 2
         # create vectorize layer, to transform words in integer
-        vectorize_layer = keras.layers.TextVectorization(
-            standardize='lower_and_strip_punctuation',
-            split='whitespace',
-            output_mode='int',
-            output_sequence_length=256,
-            vocabulary=self.vocabulary
-        )(inputs1)
-
-        x = keras_nlp.layers.TokenAndPositionEmbedding(
-            vocabulary_size=len(self.vocabulary),
-            sequence_length=256,
-            embedding_dim=300
-        )(vectorize_layer)
+        with open('./Model/word_piece_vocabulary', 'r') as f:
+            vocabulary = f.read().splitlines()
+        x = keras_nlp.tokenizers.WordPieceTokenizer(vocabulary, 300, lowercase=False,
+                                                    strip_accents=False)(inputs1)
+        # create embedding layer
+        x = keras_nlp.layers.TokenAndPositionEmbedding(len(vocabulary), 300, 300)(x)
 
         x = keras_nlp.layers.TransformerEncoder(
-            intermediate_dim=INTERMEDIATE_DIM, num_heads=NUM_HEADS, dropout=dropout_rate
+            intermediate_dim=1000, num_heads=NUM_HEADS, dropout=dropout_rate
         )(inputs=x)
-        x = keras_nlp.layers.TransformerEncoder(
-            intermediate_dim=INTERMEDIATE_DIM, num_heads=NUM_HEADS, dropout=dropout_rate
-        )(inputs=x)
-        x = keras_nlp.layers.TransformerEncoder(
-            intermediate_dim=INTERMEDIATE_DIM, num_heads=NUM_HEADS, dropout=dropout_rate
-        )(inputs=x)
-        x = keras.layers.Conv1D(128, 3, activation='relu')(x)
-        x = keras.layers.MaxPooling1D()(x)
-        x = keras.layers.Dropout(dropout_rate)(x)
-        x = keras.layers.Conv1D(64,3, activation='relu')(x)
-        x = keras.layers.MaxPooling1D()(x)
-        x = keras.layers.Dropout(dropout_rate)(x)
-        x = keras.layers.Conv1D(32,3, activation='relu')(x)
-        x = keras.layers.MaxPooling1D()(x)
-        x = keras.layers.Dropout(dropout_rate)(x)
-        x = keras.layers.Conv1D(16,3, activation='relu')(x)
 
-        x = keras.layers.Flatten()(x)
-        x = keras.layers.Dropout(0.1)(x)
-        x = keras.layers.Dense(16, activation='relu')(x)
-        outputs = keras.layers.Dense(6, activation="sigmoid")(x)
+        x = keras.layers.Dropout(dropout_rate)(x)
+        x = keras.layers.GlobalAveragePooling2D()(x)
 
+        time_input = keras.layers.Dense(32, activation=keras.activations.relu)(
+            layers.Concatenate()([inputs4, inputs5, inputs6, inputs7]))
+
+        dense = keras.layers.Dense(16, activation=keras.activations.relu)(
+            layers.Concatenate()([x, keras.layers.Flatten()(time_input)]))
+
+        dense = keras.layers.Dense(16, activation=keras.activations.relu)(
+            layers.Concatenate()([dense, inputs2, inputs3]))
+
+        dense = keras.layers.Dropout(dropout_rate)(dense)
+
+
+        outputs = keras.layers.Dense(6, activation="sigmoid")(dense)
         return outputs
 
-    def run_experiment(self, data, output, epochs=10, batch_size=100, validation_split=0.2, callbacks=None):
+    def run_experiment(self, train_in, train_out, validation_in, validation_out, epochs=10, batch_size=100,
+                       callbacks=None):
 
-        rating = keras.utils.to_categorical(output, num_classes=6)
-
-        class_weight = self.get_class_weights(output)
         if callbacks is None:
-            res = self.model.fit(data, rating, epochs=epochs, batch_size=batch_size,
-                                 validation_split=validation_split #, class_weight=class_weight
-                                 )
+            res = self.model.fit(x=train_in, y=train_out, validation_data=(validation_in, validation_out),
+                                 epochs=epochs, batch_size=batch_size)
         else:
-            res = self.model.fit(data, rating, epochs=epochs, batch_size=batch_size,
-                                 validation_split=validation_split, #class_weight=class_weight,
-                                 callbacks=callbacks)
+            res = self.model.fit(x=train_in, y=train_out, validation_data=(validation_in, validation_out),
+                                 epochs=epochs, batch_size=batch_size, callbacks=callbacks)
         return res
-
-    def get_class_weights(self, output):
-        class_weights = compute_class_weight(class_weight='balanced', classes=np.unique(output), y=output)
-        di = {}
-        for i in range(len(class_weights)):
-            di[i] = class_weights[i]
-        return di
 
     def evaluate(self):
         pass
