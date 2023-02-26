@@ -1,7 +1,6 @@
 from . import cnn1
 from . import cnn2
 from . import cnn3
-from . import cnn3_reg
 from . import cnn4
 from . import cnn5
 from . import cnn6
@@ -21,3 +20,9 @@ from . import unet5
 from . import unet6
 from . import unet7
 from . import unet8
+from . import unet9
+from . import unet10
+from . import unet11
+from . import unet12
+from . import unet13
+from . import cnn_test

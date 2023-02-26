@@ -1,0 +1,42 @@
+import numpy as np
+import tensorflow as tf
+from keras import layers
+from tensorflow import keras
+from sklearn.utils.class_weight import compute_class_weight
+import tensorflow_addons as tfa
+from tensorflow.keras import regularizers
+
+
+def model(vocabulary, dropout_rate=0.15, kernel_regularizer=regularizers.L1L2(l1=1e-5, l2=1e-4),
+          bias_regularizer=regularizers.L2(1e-4), activity_regularizer=regularizers.L2(1e-5)):
+    inputs1 = keras.Input(shape=(1,), dtype=tf.string)  # text
+    inputs2 = keras.Input(shape=1, dtype=tf.float32)  # n_comment
+    inputs3 = keras.Input(shape=1, dtype=tf.float32)  # n_votes
+
+    inputs4 = keras.Input(shape=1, dtype=tf.float32)  # read_at
+    inputs5 = keras.Input(shape=1, dtype=tf.float32)  # date_added
+    inputs6 = keras.Input(shape=1, dtype=tf.float32)  # date_updated
+    inputs7 = keras.Input(shape=1, dtype=tf.float32)  # started_at
+
+    # create vectorize layer, to transform words in integer
+    vectorize_layer = keras.layers.TextVectorization(
+        standardize='lower_and_strip_punctuation',
+        split='whitespace',
+        output_mode='int',
+        output_sequence_length=300,
+        vocabulary=vocabulary
+    )(inputs1)
+
+    x = keras.layers.Embedding(len(vocabulary), 300)(vectorize_layer)
+
+    conv1 = keras.layers.Conv1D(32, 3, activation=keras.activations.relu)(x)
+    conv1 = keras.layers.MaxPooling1D(2)(conv1)
+
+    #flatten
+    conv1 = keras.layers.Flatten()(conv1)
+    dense = keras.layers.Dense(64, activation=keras.activations.relu)(conv1)
+
+    output = keras.layers.Dense(6, activation=keras.activations.sigmoid)(dense)
+
+    return keras.Model(inputs=[inputs1, inputs2, inputs3, inputs4, inputs5, inputs6, inputs7], outputs=output,
+                       name="cnn1")
