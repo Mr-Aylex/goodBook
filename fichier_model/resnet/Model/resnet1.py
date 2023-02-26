@@ -88,13 +88,13 @@ def convolutional_block(X, f, filters, stage, block, s=2):
 
     ##### MAIN PATH #####
     # First component of main path
-    X = Conv1D(F1, 1,  strides=s, name=conv_name_base + '2a', padding='valid',
+    X = Conv1D(F1, 1, strides=s, name=conv_name_base + '2a', padding='valid',
                kernel_initializer=glorot_uniform(seed=0))(X)
     X = BatchNormalization(axis=2, name=bn_name_base + '2a')(X)
     X = Activation('relu')(X)
 
     # Second component of main path
-    X = Conv1D(F2,  f, strides=1,  name=conv_name_base + '2b', padding='same',
+    X = Conv1D(F2, f, strides=1, name=conv_name_base + '2b', padding='same',
                kernel_initializer=glorot_uniform(seed=0))(X)
     X = BatchNormalization(axis=2, name=bn_name_base + '2b')(X)
     X = Activation('relu')(X)
@@ -105,7 +105,7 @@ def convolutional_block(X, f, filters, stage, block, s=2):
     X = BatchNormalization(axis=2, name=bn_name_base + '2c')(X)
 
     ##### SHORTCUT PATH ####
-    X_shortcut = Conv1D(F3, 1, strides=s,  name=conv_name_base + '1', padding='valid',
+    X_shortcut = Conv1D(F3, 1, strides=s, name=conv_name_base + '1', padding='valid',
                         kernel_initializer=glorot_uniform(seed=0))(X_shortcut)
     X_shortcut = BatchNormalization(axis=2, name=bn_name_base + '1')(X_shortcut)
 
@@ -116,7 +116,8 @@ def convolutional_block(X, f, filters, stage, block, s=2):
     return X
 
 
-def ResNet50(vocabulary, classes=6):
+def model(vocabulary, dropout_rate=0.15, kernel_regularizer=regularizers.L1L2(l1=1e-5, l2=1e-4),
+             bias_regularizer=regularizers.L2(1e-4), activity_regularizer=regularizers.L2(1e-5)):
     """
     Implementation of the popular ResNet50 the following architecture:
     CONV2D -> BATCHNORM -> RELU -> MAXPOOL -> CONVBLOCK -> IDBLOCK*2 -> CONVBLOCK -> IDBLOCK*3
@@ -153,7 +154,7 @@ def ResNet50(vocabulary, classes=6):
     X = ZeroPadding1D((3, 3))(x)
 
     # Stage 1
-    X = Conv1D(32, 7, strides=1,  name='conv1', kernel_initializer=glorot_uniform(seed=0))(X)
+    X = Conv1D(32, 7, strides=1, name='conv1', kernel_initializer=glorot_uniform(seed=0))(X)
     X = BatchNormalization(axis=2, name='bn_conv1')(X)
     X = Activation('relu')(X)
     X = MaxPooling1D(3)(X)
@@ -162,12 +163,14 @@ def ResNet50(vocabulary, classes=6):
     X = convolutional_block(X, f=3, filters=[32, 32, 128], stage=2, block='a', s=1)
     X = identity_block(X, 3, [32, 32, 128], stage=2, block='b')
     X = identity_block(X, 3, [32, 32, 128], stage=2, block='c')
+    X = keras.layers.Dropout(dropout_rate)(X)
 
     # Stage 3
     X = convolutional_block(X, f=3, filters=[64, 64, 256], stage=3, block='a', s=2)
     X = identity_block(X, 3, [64, 64, 256], stage=3, block='b')
     X = identity_block(X, 3, [64, 64, 256], stage=3, block='c')
     X = identity_block(X, 3, [64, 64, 256], stage=3, block='d')
+    X = keras.layers.Dropout(dropout_rate)(X)
 
     # Stage 4
     X = convolutional_block(X, f=3, filters=[128, 128, 512], stage=4, block='a', s=2)
@@ -176,20 +179,52 @@ def ResNet50(vocabulary, classes=6):
     X = identity_block(X, 3, [128, 128, 512], stage=4, block='d')
     X = identity_block(X, 3, [128, 128, 512], stage=4, block='e')
     X = identity_block(X, 3, [128, 128, 512], stage=4, block='f')
+    X = keras.layers.Dropout(dropout_rate)(X)
 
     # Stage 5
     X = convolutional_block(X, f=3, filters=[256, 256, 1024], stage=5, block='a', s=2)
     X = identity_block(X, 3, [256, 256, 1024], stage=5, block='b')
     X = identity_block(X, 3, [256, 256, 1024], stage=5, block='c')
+    X = keras.layers.Dropout(dropout_rate)(X)
 
     # AVGPOOL
     X = AveragePooling1D(pool_size=2, name='avg_pool')(X)
 
     # output layer
     X = Flatten()(X)
-    X = Dense(classes, activation='softmax', name='fc' + str(classes), kernel_initializer=glorot_uniform(seed=0))(X)
 
-    # Create model
-    model = Model(inputs=[inputs1, inputs2, inputs3, inputs4, inputs5, inputs6, inputs7], outputs=X, name='resnet1')
+    time_input = keras.layers.Dense(32, activation=keras.activations.relu,
+                                    kernel_regularizer=kernel_regularizer,
+                                    bias_regularizer=bias_regularizer,
+                                    activity_regularizer=activity_regularizer)(
+        layers.Concatenate()([inputs4, inputs5, inputs6, inputs7]))
 
-    return model
+    conc = layers.Concatenate()([X, time_input])
+    dense = keras.layers.Dense(64, activation=keras.activations.relu,
+                               kernel_regularizer=kernel_regularizer,
+                               bias_regularizer=bias_regularizer,
+                               activity_regularizer=activity_regularizer)(conc)
+    dense = keras.layers.Dropout(dropout_rate)(dense)
+
+    dense = keras.layers.Dense(32, activation=keras.activations.relu,
+                               kernel_regularizer=kernel_regularizer,
+                               bias_regularizer=bias_regularizer,
+                               activity_regularizer=activity_regularizer)(dense)
+    dense = keras.layers.Dropout(dropout_rate)(dense)
+
+    dense = keras.layers.Dense(16, activation=keras.activations.relu,
+                               kernel_regularizer=kernel_regularizer,
+                               bias_regularizer=bias_regularizer,
+                               activity_regularizer=activity_regularizer)(
+        layers.Concatenate()([dense, inputs2, inputs3]))
+    dense = keras.layers.Dropout(dropout_rate)(dense)
+
+    dense = keras.layers.Dense(16, activation=keras.activations.relu,
+                               kernel_regularizer=kernel_regularizer,
+                               bias_regularizer=bias_regularizer,
+                               activity_regularizer=activity_regularizer)(dense)
+    dense = keras.layers.Dropout(dropout_rate)(dense)
+    output = keras.layers.Dense(6, activation='softmax', kernel_initializer=glorot_uniform(seed=0))(dense)
+
+    return keras.Model(inputs=[inputs1, inputs2, inputs3, inputs4, inputs5, inputs6, inputs7], outputs=output,
+                       name="resnet1")

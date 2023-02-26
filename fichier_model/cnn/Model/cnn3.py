@@ -1,103 +1,92 @@
 import numpy as np
 import tensorflow as tf
+from keras import layers
 from tensorflow import keras
 from sklearn.utils.class_weight import compute_class_weight
 import tensorflow_addons as tfa
+from tensorflow.keras import regularizers
 
-class Model:
 
-    def __init__(self, vocabulary):
-        self.vocabulary = vocabulary
-        self.name = "cnn3"
-        inputs1 = keras.Input(shape=(1,), dtype=tf.string)  # text
-        inputs2 = keras.Input(shape=1, dtype=tf.float32)  # n_comment
-        inputs3 = keras.Input(shape=1, dtype=tf.float32)  # n_votes
+def model(vocabulary, dropout_rate=0.15, kernel_regularizer=regularizers.L1L2(l1=1e-5, l2=1e-4),bias_regularizer=regularizers.L2(1e-4),activity_regularizer=regularizers.L2(1e-5)):
 
-        layers = self.create_layers(inputs1, inputs2, inputs3)
+    inputs1 = keras.Input(shape=(1,), dtype=tf.string)  # text
+    inputs2 = keras.Input(shape=1, dtype=tf.float32)  # n_comment
+    inputs3 = keras.Input(shape=1, dtype=tf.float32)  # n_votes
 
-        self.model = keras.Model(inputs=[inputs1, inputs2, inputs3], outputs=layers)
+    inputs4 = keras.Input(shape=1, dtype=tf.float32)  # read_at
+    inputs5 = keras.Input(shape=1, dtype=tf.float32)  # date_added
+    inputs6 = keras.Input(shape=1, dtype=tf.float32)  # date_updated
+    inputs7 = keras.Input(shape=1, dtype=tf.float32)  # started_at
 
-        self.model.compile(optimizer=keras.optimizers.Adamax(),
-                           loss=keras.losses.categorical_crossentropy,
-                           metrics=[keras.metrics.categorical_accuracy, tfa.metrics.F1Score(num_classes=6, average='weighted')]
-                           )
 
-    def create_layers(self, inputs1, inputs2, inputs3):
-        regularizer = keras.regularizers.l2(0.00008)
-        dropout_rate = 0.15
-        # create vectorize layer, to transform words in integer
-        vectorize_layer = keras.layers.TextVectorization(
-            standardize='lower_and_strip_punctuation',
-            split='whitespace',
-            output_mode='int',
-            ngrams=2,
-            output_sequence_length=192,
-            vocabulary=self.vocabulary
-        )(inputs1)
+    # create vectorize layer, to transform words in integer
+    vectorize_layer = keras.layers.TextVectorization(
+        standardize='lower_and_strip_punctuation',
+        split='whitespace',
+        output_mode='int',
+        output_sequence_length=300,
+        vocabulary=vocabulary
+    )(inputs1)
 
-        x = keras.layers.Embedding(len(self.vocabulary), 300, batch_size=100, embeddings_regularizer=keras.regularizers.l2(0.0008))(
-            vectorize_layer)
+    x = keras.layers.Embedding(len(vocabulary), 300)(vectorize_layer)
 
-        x = keras.layers.Conv1D(64, 9, kernel_regularizer=regularizer, bias_regularizer=regularizer, padding="same",
-                                activation=keras.activations.relu)(x)
-        x = keras.layers.MaxPooling1D(pool_size=2)(x)
 
-        x = keras.layers.Conv1D(32, 6, kernel_regularizer=regularizer, bias_regularizer=regularizer, padding="same",
-                                activation=keras.activations.relu)(x)
-        #x = keras.layers.MaxPooling1D(pool_size=5)(x)
+    conv1 = keras.layers.Conv1D(32, 3, activation=keras.activations.relu,
+                                kernel_regularizer=kernel_regularizer,
+                                bias_regularizer=bias_regularizer,
+                                activity_regularizer=activity_regularizer)(x)
+    conv1 = keras.layers.Dropout(dropout_rate)(conv1)
+    conv1 = keras.layers.MaxPooling1D(2)(conv1)
 
-        x = keras.layers.Conv1D(32, 6, kernel_regularizer=regularizer, bias_regularizer=regularizer, padding="same",
-                                activation=keras.activations.relu)(x)
-        x = keras.layers.MaxPooling1D(pool_size=10)(x)
+    conv1 = keras.layers.Conv1D(64, 3, activation=keras.activations.relu,
+                                kernel_regularizer=kernel_regularizer,
+                                bias_regularizer=bias_regularizer,
+                                activity_regularizer=activity_regularizer)(conv1)
+    conv1 = keras.layers.Dropout(dropout_rate)(conv1)
+    conv1 = keras.layers.MaxPooling1D(2)(conv1)
 
-        x = keras.layers.LocallyConnected1D(16, 3, kernel_regularizer=regularizer, bias_regularizer=regularizer,
-                                            padding="valid", activation=keras.activations.relu)(x)
+    conv1 = keras.layers.Conv1D(128, 3, activation=keras.activations.relu,
+                                kernel_regularizer=kernel_regularizer,
+                                bias_regularizer=bias_regularizer,
+                                activity_regularizer=activity_regularizer)(conv1)
+    conv1 = keras.layers.Dropout(dropout_rate)(conv1)
+    conv1 = keras.layers.MaxPooling1D(2)(conv1)
 
-        #x = keras.layers.BatchNormalization()(x)
 
-        flatten = keras.layers.Flatten()(x)
 
-        layer1 = keras.layers.Dense(32, activation=tf.keras.activations.relu, kernel_regularizer=regularizer,
-                                    bias_regularizer=regularizer)(flatten)
-        drop1 = keras.layers.Dropout(dropout_rate)(layer1)
+    time_input = keras.layers.Dense(32, activation=keras.activations.relu,
+                                    kernel_regularizer=kernel_regularizer,
+                                    bias_regularizer=bias_regularizer,
+                                    activity_regularizer=activity_regularizer)(
+        layers.Concatenate()([inputs4, inputs5, inputs6, inputs7]))
 
-        layer2 = keras.layers.Dense(16, activation=tf.keras.activations.relu, kernel_regularizer=regularizer,
-                                    bias_regularizer=regularizer)(drop1)
-        drop2 = keras.layers.Dropout(dropout_rate)(layer2)
+    conc = layers.Concatenate()([keras.layers.Flatten()(conv1), time_input])
+    dense = keras.layers.Dense(64, activation=keras.activations.relu,
+                               kernel_regularizer=kernel_regularizer,
+                               bias_regularizer=bias_regularizer,
+                               activity_regularizer=activity_regularizer)(conc)
+    dense = keras.layers.Dropout(dropout_rate)(dense)
 
-        layer3 = keras.layers.Dense(16, activation=tf.keras.activations.relu, kernel_regularizer=regularizer,
-                                    bias_regularizer=regularizer)(drop2)
-        drop3 = keras.layers.Dropout(dropout_rate)(layer3)
+    dense = keras.layers.Dense(32, activation=keras.activations.relu,
+                               kernel_regularizer=kernel_regularizer,
+                               bias_regularizer=bias_regularizer,
+                               activity_regularizer=activity_regularizer)(dense)
+    dense = keras.layers.Dropout(dropout_rate)(dense)
 
-        layer4 = keras.layers.Dense(16, activation=tf.keras.activations.relu, kernel_regularizer=regularizer,
-                                    bias_regularizer=regularizer)(drop3)
-        drop4 = keras.layers.Dropout(dropout_rate)(layer4)
+    dense = keras.layers.Dense(16, activation=keras.activations.relu,
+                               kernel_regularizer=kernel_regularizer,
+                               bias_regularizer=bias_regularizer,
+                               activity_regularizer=activity_regularizer)(
+        layers.Concatenate()([dense, inputs2, inputs3]))
+    dense = keras.layers.Dropout(dropout_rate)(dense)
 
-        conc = keras.layers.concatenate([drop4, inputs2, inputs3])
+    dense = keras.layers.Dense(16, activation=keras.activations.relu,
+                               kernel_regularizer=kernel_regularizer,
+                               bias_regularizer=bias_regularizer,
+                               activity_regularizer=activity_regularizer)(dense)
+    dense = keras.layers.Dropout(dropout_rate)(dense)
 
-        return keras.layers.Dense(6, activation=keras.activations.sigmoid)(conc)
+    output = keras.layers.Dense(6, activation=keras.activations.sigmoid)(dense)
 
-    def run_experiment(self, data, output, epochs=10, batch_size=100, validation_split=0.2, callbacks=None):
+    return keras.Model(inputs=[inputs1, inputs2, inputs3, inputs4, inputs5, inputs6, inputs7], outputs=output, name="cnn3")
 
-        rating = keras.utils.to_categorical(output, num_classes=6)
-
-        class_weight = self.get_class_weights(output)
-        if callbacks is None:
-            res = self.model.fit(data, rating, epochs=epochs, batch_size=batch_size,
-                           validation_split=validation_split, #class_weight=class_weight
-             )
-        else:
-            res = self.model.fit(data, rating, epochs=epochs, batch_size=batch_size,
-                           validation_split=validation_split, #class_weight=class_weight,
-                           callbacks=[callbacks])
-        return res
-
-    def get_class_weights(self, output):
-        class_weights = compute_class_weight(class_weight='balanced', classes=np.unique(output), y=output)
-        di = {}
-        for i in range(len(class_weights)):
-            di[i] = class_weights[i]
-        return di
-
-    def evaluate(self):
-        pass
